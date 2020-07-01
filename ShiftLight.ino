@@ -149,19 +149,19 @@ SSD1306AsciiSoftSpi oled;
 
 
 // CONFIGURATION FOR THE ROTARY ENCODER 
-  // Arduino pins the encoder is attached to. Attach the center to ground. 
-  #define ROTARY_PIN1 A0
-  #define ROTARY_PIN2 A1
-  
-  // Use the full-step state table (emits a code at 00 only) 
-  const char ttable[7][4] = { 
+// Arduino pins the encoder is attached to. Attach the center to ground. 
+#define ROTARY_PIN1 A0
+#define ROTARY_PIN2 A1
+
+// Use the full-step state table (emits a code at 00 only) 
+const char ttable[7][4] = { 
   {0x0, 0x2, 0x4, 0x0}, {0x3, 0x0, 0x1, 0x40}, 
   {0x3, 0x2, 0x0, 0x0}, {0x3, 0x2, 0x1, 0x0}, 
   {0x6, 0x0, 0x4, 0x0}, {0x6, 0x5, 0x0, 0x80}, 
   {0x6, 0x5, 0x4, 0x0}, 
-  }; 
-  
- volatile unsigned char state = 0; 
+}; 
+
+volatile unsigned char state = 0; 
   
 char rotary_process() {
   char pinstate = (digitalRead(ROTARY_PIN2) << 1) | digitalRead(ROTARY_PIN1);
@@ -169,12 +169,10 @@ char rotary_process() {
   return (state & 0xc0);
 }
 
-
-
                               
-                              /*************
-                               * SETUP *
-                              *************/
+/*************
+ *   SETUP   *
+ *************/
 
 //SETUP TO CONFIGURE THE ARDUINO AND GET IT READY FOR FIRST RUN 
 void setup() {
@@ -183,16 +181,16 @@ void setup() {
   getEEPROM();
   check_first_run();
   
-    if(DEBUG){
-      Serial.begin(57600);
-      Serial.println("ChipperNut ShiftLight Project. V2.");
-      Serial.println("Prepare for awesome......");
-    }
-  
-  
-    for (int thisReading = 0; thisReading < numReadings; thisReading++){
-      rpmarray[thisReading] = 0;  
-    }
+  if(DEBUG) {
+    Serial.begin(57600);
+    Serial.println("ChipperNut ShiftLight Project. V2.");
+    Serial.println("Prepare for awesome......");
+  }
+
+
+  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+    rpmarray[thisReading] = 0;  
+  }
   
   timeoutCounter = timeoutValue;
   buildarrays();
@@ -222,39 +220,37 @@ void setup() {
   delay(1000);
   oled.clear();
   
-  if(DEBUG){Serial.println("LOADED.");}
+  if (DEBUG) Serial.println("LOADED.");
 
 } 
 
 
-
-
-
-                        /*************
-                         * LOOP *
-                        *************/
+/*************
+ *   LOOP    *
+ *************/
 void loop() { 
 
-   rpm = long(60e7/cal)/(float)interval;
+   rpm = long(60e7 / cal)/(float)interval;
 
-     if (timeoutCounter > 0){ timeoutCounter--;}  
-     if (timeoutCounter <= 0){rpm = 0;}
+  if (timeoutCounter > 0) timeoutCounter--;
+  if (timeoutCounter <= 0) rpm = 0;
 
   if (((rpm > (rpm_last +(rpm_last*.2))) || (rpm < (rpm_last - (rpm_last*.2)))) && (rpm_last > 0) && (justfixed < 3)){
-        rpm = rpm_last;
-        justfixed++;
-        if(DEBUG){
-          Serial.print("FIXED!  ");
-          Serial.println(rpm_last);}              
+    rpm = rpm_last;
+    justfixed++;
+    if (DEBUG) {
+      Serial.print("FIXED!  ");
+      Serial.println(rpm_last);
+    }
       
   } else {
     rpm_last = rpm;
     justfixed--;
-    if (justfixed <= 0){justfixed = 0;}
+    if (justfixed <= 0) justfixed = 0;
   }
 
   
-  if (smoothing){
+  if (smoothing) {
     total = total - rpmarray[index]; 
     rpmarray[index] = rpm;
     total = total + rpmarray[index]; 
@@ -263,15 +259,17 @@ void loop() {
         index = 0;    
      }                       
     average = total / numReadings; 
-    if(DEBUG){Serial.print("average: ");
-    Serial.println(average);}
+    if (DEBUG) {
+      Serial.print("average: ");
+      Serial.println(average);
+    }
     rpm = average;       
   }
 
   
-  if (rpm > 0 ){
-    if(DEBUG){Serial.println(rpm); }
-    if(DEBUG){
+  if (rpm > 0 ) {
+    if (DEBUG) Serial.println(rpm);
+    if (DEBUG) {
       oled.set1X(); 
       oled.setFont(chippernutserial);
       oled.setCursor(78, 0);
@@ -280,35 +278,34 @@ void loop() {
     
     oled.set1X();  
     oled.setCursor(0, 0);
-    oled.setFont(utf8font10x16);
+    oled.setFo
+    nt(utf8font10x16);
     oled.print("RPM");  
     oled.set2X();    
     oled.setFont(lcdnums12x16);
     oled.setCursor(0, 2);
-    if ((display_rpm>=10000 && rpm <10000) || 
-        (display_rpm>=1000 && rpm <1000)){
-          oled.clearToEOL();
-         }  
+    if ((display_rpm>=10000 && rpm <10000) || (display_rpm>=1000 && rpm <1000)) {
+      oled.clearToEOL();
+    }  
     oled.print(rpm);
     display_rpm = rpm;  
   
-      if (digitalRead(dimPin) != dimmer){
-         dimmer = digitalRead(dimPin);
-          loadallcolors(); 
+    if (digitalRead(dimPin) != dimmer){
+      dimmer = digitalRead(dimPin);
+      loadallcolors(); 
   
-          if (digitalRead(dimPin) == dimmerlogic){
-            oled.set1X();  
-            oled.setFont(chippernutdimmer);
-            oled.setCursor(108, 0);
-            oled.print("c");;                                              
-           }else{
-            oled.set1X();  
-            oled.setFont(chippernutdimmer);
-            oled.setCursor(108, 0);
-            oled.clearToEOL();
-          
-           }
+      if (digitalRead(dimPin) == dimmerlogic) {
+        oled.set1X();  
+        oled.setFont(chippernutdimmer);
+        oled.setCursor(108, 0);
+        oled.print("c");;                                              
+      } else {
+        oled.set1X();  
+        oled.setFont(chippernutdimmer);
+        oled.setCursor(108, 0);
+        oled.clearToEOL();      
       }
+    }
   } else {
     rpm = 0;
     oled.clear();      
@@ -317,174 +314,160 @@ void loop() {
   }
 
 
-   if (rpm < shift_rpm){
-    for (a = 0; a<NUMPIXELS; a++){
-      if (rpm>rpmtable[a][0]){
-          switch (rpmtable[a][1]){
-            case 1:
-              strip.setPixelColor(a,color1);
+  if (rpm < shift_rpm) {
+    for (a = 0; a<NUMPIXELS; a++) {
+      if (rpm>rpmtable[a][0]) {
+        switch (rpmtable[a][1]) {
+          case 1:
+            strip.setPixelColor(a,color1);
+            break;    
+          case 2:
+            strip.setPixelColor(a,color2);  
             break;
-    
-            case 2:
-              strip.setPixelColor(a,color2);  
-            break;
-    
-            case 3:
-               strip.setPixelColor(a,color3);  
+          case 3:
+              strip.setPixelColor(a,color3);  
             break;        
-          }
+        }
       } else {
-    strip.setPixelColor(a, strip.Color(0, 0, 0));    
+        strip.setPixelColor(a, strip.Color(0, 0, 0));    
       } 
     }
-  
   } else {
-  
     unsigned long currentMillis = millis();
-  
-      if(currentMillis - previousMillis > shiftinterval) {
-          previousMillis = currentMillis;   
-          flashbool = !flashbool; 
-  
-          if (flashbool == true)
-           for(int i=0; i<NUMPIXELS; i++) { 
-              strip.setPixelColor(i, flclr1); 
-           }
-          else
-           for(int i=0; i<NUMPIXELS; i++) { 
-               strip.setPixelColor(i, 0,0,0); 
-            }      
-        }  
+    if (currentMillis - previousMillis > shiftinterval) {
+      previousMillis = currentMillis;   
+      flashbool = !flashbool; 
+
+      if (flashbool == true) {
+        for (int i=0; i<NUMPIXELS; i++) { 
+          strip.setPixelColor(i, flclr1); 
+        }
+      } else {
+        for(int i=0; i<NUMPIXELS; i++) { 
+          strip.setPixelColor(i, 0,0,0); 
+        }
+      }      
+    }  
   }
 
   strip.show(); 
-
   
-    //Poll the Button, if pushed, cue animation and enter menu subroutine 
-    if (digitalRead(button_pin) == LOW){ 
-      delay(250); 
-      strip.clear(); 
-      oled.clear();
-      entermenu();  
-      menuvar=1; 
-      menu(); 
-    } 
+  //Poll the Button, if pushed, cue animation and enter menu subroutine 
+  if (digitalRead(button_pin) == LOW){ 
+    delay(250); 
+    strip.clear(); 
+    oled.clear();
+    entermenu();  
+    menuvar=1; 
+    menu(); 
+  } 
 } 
-
-
 
 
 void buildarrays(){
                    
-int x;  //rpm increment
-int y;  //starting point pixel address
-int ya; // second starting point pixel address (for middle-out animation only)
-int i;  //temporary for loop variable
+  int x;   // rpm increment
+  int y;   // starting point pixel address
+  int ya;  // second starting point pixel address (for middle-out animation only)
+  int i;   // temporary for loop variable
 
-if(DEBUG){
-  Serial.print("NUMPIXELS:  ");
- Serial.println(NUMPIXELS);
- Serial.print("PIXELANIM:  ");
- Serial.println(pixelanim);
- Serial.print("Start1: ");
- Serial.println(seg1_start);
- Serial.print("End1: ");
- Serial.println(seg1_end);
- Serial.print("End2: ");
- Serial.println(seg2_end);
- Serial.print("End3: ");
- Serial.println(seg3_end);
- Serial.print("  Activation RPM ");
- Serial.println(activation_rpm);
- Serial.print("  SHIFT RPM ");
- Serial.println(shift_rpm);
-}
+  if(DEBUG){
+    Serial.print("NUMPIXELS:  ");
+    Serial.println(NUMPIXELS);
+    Serial.print("PIXELANIM:  ");
+    Serial.println(pixelanim);
+    Serial.print("Start1: ");
+    Serial.println(seg1_start);
+    Serial.print("End1: ");
+    Serial.println(seg1_end);
+    Serial.print("End2: ");
+    Serial.println(seg2_end);
+    Serial.print("End3: ");
+    Serial.println(seg3_end);
+    Serial.print("  Activation RPM ");
+    Serial.println(activation_rpm);
+    Serial.print("  SHIFT RPM ");
+    Serial.println(shift_rpm);
+  }
 
   switch(pixelanim){
-
     case 1:        
       y=0;
       x = ((shift_rpm - activation_rpm)/NUMPIXELS);
-      for (i = 0; i<seg1_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (i*x);
+      for (i = 0; i < seg1_end + 1; i++) {
+        rpmtable[i][0] = activation_rpm + (i * x);
         rpmtable[i][1] = 1;
       }
-       for (i = seg1_end+1; i<seg2_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (i*x);
+      for (i = seg1_end + 1; i < seg2_end + 1; i++) {
+        rpmtable[i][0] = activation_rpm + (i * x);
         rpmtable[i][1] = 2;
       }
-      for (i = seg2_end+1; i<seg3_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (i*x);
+      for (i = seg2_end + 1; i < seg3_end + 1; i++) {
+        rpmtable[i][0] = activation_rpm + (i * x);
         rpmtable[i][1] = 3;
       }
-    break;
-
-
+      break;
     case 2:
-     if (((NUMPIXELS-1)%2)> 0){    
-         x = ((shift_rpm - activation_rpm)/(NUMPIXELS/2));  //EVEN PIXELS
-     }else{
-         x = ((shift_rpm - activation_rpm)/((NUMPIXELS/2)+1));   //ODD PIXELS       
-     }
+      if (((NUMPIXELS - 1) % 2) > 0) {
+          x = ((shift_rpm - activation_rpm) / (NUMPIXELS / 2));  //EVEN PIXELS
+      } else {
+          x = ((shift_rpm - activation_rpm) / ((NUMPIXELS / 2) + 1));   //ODD PIXELS       
+      }
      
-
-     ya = 0;   // SEGMENT 1
-     for (i = seg1_start; i<seg1_end+1; i++){      
+      ya = 0;   // SEGMENT 1
+      for (i = seg1_start; i<seg1_end+1; i++) {
         rpmtable[i][0] = activation_rpm + (ya*x);
         rpmtable[i][1] = 1;
         ya++;
       }
 
-          
-         if (((NUMPIXELS-1)%2)> 0){
-          ya = 0;
-           for (i = seg1_start-1; i>seg1_start-(seg1_end-seg1_start)-2; i--){
-              rpmtable[i][0] = activation_rpm + (ya*x);
-              rpmtable[i][1] = 1;
-              ya++;
-            } 
-         } else {
-          ya = 1;
-           for (i = seg1_start-1; i>seg1_start-(seg1_end-seg1_start)-1; i--){
-              rpmtable[i][0] = activation_rpm + (ya*x);
-              rpmtable[i][1] = 1;
-              ya++;     
-            }
-         }
+      if (((NUMPIXELS - 1) % 2)> 0) {
+        ya = 0;
+        for (i = seg1_start - 1; i > seg1_start - (seg1_end - seg1_start) - 2; i--) {
+          rpmtable[i][0] = activation_rpm + (ya * x);
+          rpmtable[i][1] = 1;
+          ya++;
+        } 
+      } else {
+        ya = 1;
+        for (i = seg1_start - 1; i > seg1_start - (seg1_end - seg1_start) - 1; i--) {
+          rpmtable[i][0] = activation_rpm + (ya * x);
+          rpmtable[i][1] = 1;
+          ya++;
+        }
+      }
 
-
-
-      if ((seg1_end+1) == seg2_end){
+      if ((seg1_end + 1) == seg2_end) {
         ya =  seg2_end - seg1_start;  //SEGMENT 2
       } else {
-        ya =  (seg1_end+1) - seg1_start;  
+        ya = (seg1_end + 1) - seg1_start;  
       }
       
-     for (i = (seg1_end+1); i<seg2_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (ya*x);
+      for (i = (seg1_end + 1); i < seg2_end + 1; i++ ) {
+        rpmtable[i][0] = activation_rpm + (ya * x);
         rpmtable[i][1] = 2;
         ya++;
       }
       
-      if ((seg1_end+1) == seg2_end){
+      if ((seg1_end+1) == seg2_end) {
         ya =  seg2_end - seg1_start;  //SEGMENT 2
       } else {
-        ya =  (seg1_end+1) - seg1_start;  
+        ya = (seg1_end+1) - seg1_start;  
       }
       
-         if (((NUMPIXELS-1)%2)> 0){
-           for (i = seg1_start-(seg1_end-seg1_start)-2; i>seg1_start-(seg2_end-seg1_start)-2; i--){
-              rpmtable[i][0] = activation_rpm + (ya*x);
-              rpmtable[i][1] = 2;
-              ya++;
-            }
-          } else {
-            for (i = seg1_start-(seg1_end-seg1_start)-1; i>seg1_start-(seg2_end-seg1_start)-1; i--){
-              rpmtable[i][0] = activation_rpm + (ya*x);
-              rpmtable[i][1] = 2;
-              ya++;
-             }
-           }
+      if (((NUMPIXELS - 1) % 2) > 0) {
+        for (i = seg1_start - (seg1_end - seg1_start) - 2; i > seg1_start - (seg2_end - seg1_start) - 2; i--) {
+          rpmtable[i][0] = activation_rpm + (ya * x);
+          rpmtable[i][1] = 2;
+          ya++;
+        }
+      } else {
+        for (i = seg1_start - (seg1_end - seg1_start) - 1; i > seg1_start - (seg2_end - seg1_start) - 1; i--) {
+          rpmtable[i][0] = activation_rpm + (ya * x);
+          rpmtable[i][1] = 2;
+          ya++;
+        }
+      }
            
       if ((seg2_end+1) == seg3_end){
          ya =  seg3_end - seg1_start;    //SEGMENT 3
@@ -493,27 +476,27 @@ if(DEBUG){
       }
       
       
-     for (i = (seg2_end+1); i<seg3_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (ya*x);
+     for (i = (seg2_end + 1); i < seg3_end + 1; i++) {
+        rpmtable[i][0] = activation_rpm + (ya * x);
         rpmtable[i][1] = 3;
         ya++;
       }
 
-      if ((seg2_end+1) == seg3_end){
+      if ((seg2_end + 1) == seg3_end){
          ya =  seg3_end - seg1_start;   
       } else {
-         ya =  (seg2_end+1) - seg1_start;     
+         ya =  (seg2_end + 1) - seg1_start;     
       }
       
-      if (((NUMPIXELS-1)%2)> 0){
-          for (i = seg1_start-(seg2_end-seg1_start)-2; i>seg1_start-(seg3_end-seg1_start)-2; i--){
-             rpmtable[i][0] = activation_rpm + (ya*x);
+      if (((NUMPIXELS - 1) % 2) > 0){
+          for (i = seg1_start - (seg2_end - seg1_start) - 2; i > seg1_start - (seg3_end - seg1_start) - 2; i--) {
+             rpmtable[i][0] = activation_rpm + (ya * x);
              rpmtable[i][1] = 3;
              ya++;
            }
       } else {
-          for (i = seg1_start-(seg2_end-seg1_start)-1; i>seg1_start-(seg3_end-seg1_start)-1; i--){
-              rpmtable[i][0] = activation_rpm + (ya*x);
+          for (i = seg1_start - (seg2_end - seg1_start) - 1; i > seg1_start - (seg3_end - seg1_start) - 1; i--) {
+              rpmtable[i][0] = activation_rpm + (ya * x);
               rpmtable[i][1] = 3;
               ya++;
           }        
@@ -521,103 +504,95 @@ if(DEBUG){
     break;
     
   case 3:        
-        y=0;
-        x = ((shift_rpm - activation_rpm)/NUMPIXELS);
-        for (i = NUMPIXELS-1; i>seg1_end-1; i--){
-          rpmtable[i][0] = activation_rpm + (y*x);
-          rpmtable[i][1] = 1;
-          y++;
-        }
-         for (i = seg1_end-1; i>seg2_end-1; i--){
-          rpmtable[i][0] = activation_rpm + (y*x);
-          rpmtable[i][1] = 2;
-          y++;
-        }
-        for (i = seg2_end-1; i>seg3_end-1; i--){
-          rpmtable[i][0] = activation_rpm + (y*x);
-          rpmtable[i][1] = 3;
-          y++;
-        }
-      break;
+    y=0;
+    x = ((shift_rpm - activation_rpm) / NUMPIXELS);
+    for (i = NUMPIXELS - 1; i > seg1_end - 1; i--) {
+      rpmtable[i][0] = activation_rpm + (y * x);
+      rpmtable[i][1] = 1;
+      y++;
+    }
+      for (i = seg1_end-1; i>seg2_end-1; i--){
+      rpmtable[i][0] = activation_rpm + (y*x);
+      rpmtable[i][1] = 2;
+      y++;
+    }
+    for (i = seg2_end-1; i>seg3_end-1; i--){
+      rpmtable[i][0] = activation_rpm + (y*x);
+      rpmtable[i][1] = 3;
+      y++;
+    }
+    break;
 
-case 4:                                           
-     if (((NUMPIXELS-1)%2)> 0){    
-         x = ((shift_rpm - activation_rpm)/(NUMPIXELS/2));  //EVEN PIXELS
-     }else{
-       x = ((shift_rpm - activation_rpm)/((NUMPIXELS/2)+1));   //ODD PIXELS       
-     }
-     
-
-      // SEGMENT 1
-     for (i = seg1_start; i<seg1_end+1; i++){      
-        rpmtable[i][0] = activation_rpm + (i*x);
-        rpmtable[i][1] = 1;
-         }
-          
-          ya = 0;
-           for (i = NUMPIXELS-1; i>NUMPIXELS - (seg1_end) - 2; i--){
-              rpmtable[i][0] = activation_rpm + (ya*x);
-              rpmtable[i][1] = 1;
-              ya++;
-            } 
+  case 4:                                           
+    if (((NUMPIXELS-1)%2)> 0){    
+        x = ((shift_rpm - activation_rpm)/(NUMPIXELS/2));  //EVEN PIXELS
+    }else{
+      x = ((shift_rpm - activation_rpm)/((NUMPIXELS/2)+1));   //ODD PIXELS       
+    }
+    
+    // SEGMENT 1
+    for (i = seg1_start; i<seg1_end+1; i++){      
+      rpmtable[i][0] = activation_rpm + (i*x);
+      rpmtable[i][1] = 1;
+    }
+        
+    ya = 0;
+    for (i = NUMPIXELS-1; i>NUMPIXELS - (seg1_end) - 2; i--){
+      rpmtable[i][0] = activation_rpm + (ya*x);
+      rpmtable[i][1] = 1;
+      ya++;
+    } 
 
     // SEGMENT 2
-     for (i = (seg1_end+1); i<seg2_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (i*x);
-        rpmtable[i][1] = 2;
-      }
-      
+    for (i = (seg1_end+1); i<seg2_end+1; i++){
+      rpmtable[i][0] = activation_rpm + (i*x);
+      rpmtable[i][1] = 2;
+    }
+    
+    ya = seg1_end+1; 
+    for (i = NUMPIXELS-(seg1_end)-2; i>NUMPIXELS-seg2_end-2; i--){
+      rpmtable[i][0] = activation_rpm + (ya*x);
+      rpmtable[i][1] = 2;
+      ya++;
+    }
 
-      ya = seg1_end+1; 
-      for (i = NUMPIXELS-(seg1_end)-2; i>NUMPIXELS-seg2_end-2; i--){
-           rpmtable[i][0] = activation_rpm + (ya*x);
-           rpmtable[i][1] = 2;
-           ya++;
-          }
- 
     // SEGMENT 3
-     for (i = (seg2_end+1); i<seg3_end+1; i++){
-        rpmtable[i][0] = activation_rpm + (i*x);
-        rpmtable[i][1] = 3;
-      }
+    for (i = (seg2_end+1); i<seg3_end+1; i++){
+      rpmtable[i][0] = activation_rpm + (i*x);
+      rpmtable[i][1] = 3;
+    }
 
-      ya = seg2_end+1;
-      for (i = NUMPIXELS-(seg2_end)-2; i>NUMPIXELS-seg3_end-2; i--){
-           rpmtable[i][0] = activation_rpm + (ya*x);
-           rpmtable[i][1] = 3;
-           ya++;
-          }
-
+    ya = seg2_end+1;
+    for (i = NUMPIXELS-(seg2_end)-2; i>NUMPIXELS-seg3_end-2; i--){
+      rpmtable[i][0] = activation_rpm + (ya*x);
+      rpmtable[i][1] = 3;
+      ya++;
+    }
     break;
    
   }
 
   
 
-if(DEBUG){
-  for (i = 0; i<NUMPIXELS; i++){
-    Serial.print(rpmtable[i][0]);
-    Serial.print("  ");
-    Serial.println(rpmtable[i][1]);
+  if (DEBUG) {
+    for (i = 0; i<NUMPIXELS; i++){
+      Serial.print(rpmtable[i][0]);
+      Serial.print("  ");
+      Serial.println(rpmtable[i][1]);
+    }
   }
 }
-}
-
-
-
-
-
 
 
 /*************************
- * MENU SYSTEM
+ *   MENU SYSTEM
  *************************/
 
 // MENU SYSTEM 
 void menu(){ 
-prev_menu = 2;
-//this keeps us in the menu 
-while (menuvar == 1){   
+  prev_menu = 2;
+  //this keeps us in the menu 
+  while (menuvar == 1){   
   
   // This little bit calls the rotary encoder   
   int result = rotary_process(); 
