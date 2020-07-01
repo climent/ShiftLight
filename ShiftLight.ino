@@ -9,16 +9,10 @@
 
 Visit us: www.chippernut.com 
 
-Kudos to: 
-Adafruit (www.adafruit.com) 
-Arduino (www.arduino.com) 
-
-
 
 ARDUINO RPM TACHOMETER MULTI-DISPLAY 
 Written by Jonduino (Chippernut)
-10-13-2013 
-
+03-20-2016
 
 ********************* Version NOTES ******************** 
 /* v1.0 BETA 11/17/2013 -- Initial Release 
@@ -27,20 +21,19 @@ Written by Jonduino (Chippernut)
 ** Improved sleep function, now it shuts off after 5-seconds of engine OFF 
 ** Other minor improvements. 
 ** v2.1 08/10/2015 -- Too many to list here. 
-** v2.3 03/31/2016
+** v2.2 01/17/2016 -- 
+** New Display Support
+** v2.4 03/20/2016 --
 ** Added dimmer support 
 ** Fixed array mathematics (bug)
 ** Improved rotary encoder response
 ** Finer PPr Control (0.1)
-** PPR can go below 1.0
-** v2.31 04/14/2016
-** Improved error handling
 */ 
 
 
 // Include these libraries 
 #include <Wire.h> 
-#include <Adafruit_LEDBackpack.h> 
+#include <TM1637Display.h>                                                //#include <Adafruit_LEDBackpack.h> 
 #include <Adafruit_GFX.h> 
 #include <Adafruit_NeoPixel.h> 
 #include <EEPROM.h> 
@@ -58,8 +51,7 @@ return( ((unsigned int)g & 0x1F )<<10 | ((unsigned int)b & 0x1F)<<5 | (unsigned 
 } 
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(EEPROM.read(11), PIN, NEO_GRB + NEO_KHZ800); 
-Adafruit_7segment matrix = Adafruit_7segment(); 
-
+                                             
 const int rpmPin = 2; 
 const int ledPin = 13; 
 const int dimPin = 9;
@@ -73,10 +65,8 @@ long rpm_last;
 int activation_rpm; 
 int shift_rpm; 
 int menu_enter = 0; 
-
-     int current_seg_number = 1;
-     int seg_mover = 0;
-
+int current_seg_number = 1;
+int seg_mover = 0;
 long previousMillis = 0;
 long shiftinterval = 50;
 boolean flashbool = true;      
@@ -86,7 +76,6 @@ boolean testbright = false;
 long prev_variable; 
 int prev_menu;
 boolean testdim = false; 
-int justfixed; 
 
 //array for rpm averaging, filtering comparison
 const int numReadings = 5;
@@ -103,13 +92,13 @@ int c2;
 int c3; 
 int c4; 
 int c5; 
-int brightval; //7-seg brightness 
+int brightval;      //7-seg brightness 
 int dimval;         //7-seg dim brightness
-int sb; //strip brightness 
+int sb;             //strip brightness
 int dimsb;          // strip dim brightness
 boolean dimmer = false;
 boolean dimmerlogic = false;
-int pixelanim =1;
+int pixelanim=1;                                     
 int senseoption;
 int smoothing;
 int rpmscaler;
@@ -152,6 +141,28 @@ int menuvar;
 int val; 
 int rotaryval = 0; 
 
+// CONFIGURATION FOR 7-SEG DISPLAY
+#define CLK A2
+#define DIO A3
+TM1637Display display(CLK, DIO);
+ uint8_t SEG_WRITE[] = {   // [=] EXIT
+  SEG_A | SEG_F| SEG_E | SEG_D,          
+  SEG_A | SEG_D,   
+  SEG_A | SEG_D,                          
+  SEG_A | SEG_D | SEG_B | SEG_C           
+  };
+  
+//
+//      A
+//     ---
+//  F |   | B
+//     -G-
+//  E |   | C
+//     ---
+//      D
+
+
+
 // CONFIGURATION FOR THE ROTARY ENCODER 
   // Arduino pins the encoder is attached to. Attach the center to ground. 
   #define ROTARY_PIN1 10 
@@ -167,11 +178,11 @@ int rotaryval = 0;
   
   volatile unsigned char state = 0; 
   
-  char rotary_process() { 
-  char pinstate = (digitalRead(ROTARY_PIN2) << 1) | digitalRead(ROTARY_PIN1); 
-  state = ttable[state][pinstate];
-  return (state & 0xc0);   
-  }
+char rotary_process() {
+  char pinstate = (digitalRead(ROTARY_PIN2) << 1) | digitalRead(ROTARY_PIN1);
+  state = ttable[state & 0xf][pinstate];
+  return (state & 0xc0);
+}
 
 int check_mem() {
   uint8_t * heapptr;
@@ -207,7 +218,6 @@ prev_animation = pixelanim;
 timeoutCounter = timeoutValue;
 buildarrays();
 
-matrix.begin(0x70); 
 strip.begin(); 
 strip.show(); // Initialize all pixels to 'off' 
 
@@ -240,14 +250,18 @@ delay(10);
 flclr2 = load_color(c5); 
 delay(10); 
 
-       if (digitalRead(dimPin) == dimmerlogic){      
-              matrix.setBrightness(dimval); 
-              matrix.writeDisplay(); 
-            }else{
-              matrix.setBrightness(brightval); 
-              matrix.writeDisplay();       
-            }
-
+        if (digitalRead(dimPin) == dimmerlogic){
+          display.setBrightness(dimval); 
+         }else{
+          display.setBrightness(brightval);         
+         }
+display.setColon(false);         
+SEG_WRITE[0] =  (SEG_A | SEG_F| SEG_E | SEG_D);           // [
+      SEG_WRITE[1] =  (SEG_A | SEG_D);                    //=
+      SEG_WRITE[2] =  (SEG_A | SEG_D);                    //=              
+      SEG_WRITE[3] =  (SEG_A | SEG_D | SEG_B | SEG_C);    // ]
+display.setSegments(SEG_WRITE);
+delay(1000);
 } 
 
 
@@ -264,87 +278,79 @@ switch (senseoption){
   break;
 
   case 2: 
-  
     if (FreqMeasure.available()) {
     rpm = (600/cal)* FreqMeasure.countToFrequency(FreqMeasure.read());
     timeoutCounter = timeoutValue;
     }
-
   break;  
 }
 
-/*
-if(DEBUG){Serial.print("RAW:  ");}
-if(DEBUG){Serial.print(rpm);} 
-if(DEBUG){Serial.print("    RPMLAST_ERR:  ");}
-if(DEBUG){Serial.print(rpm_last -(rpm_last*.2));}
-if(DEBUG){Serial.print(" - ");}
-if(DEBUG){Serial.println(rpm_last +(rpm_last*.2));}
-*/
-  if (((rpm > (rpm_last +(rpm_last*.2))) || (rpm < (rpm_last - (rpm_last*.2)))) && (rpm_last > 0) && (justfixed < 3)){
-        rpm = rpm_last;
-        justfixed++;
-        if(DEBUG){Serial.print("FIXED!  ");}
-        if(DEBUG){Serial.println(rpm_last);}         
-      
-  } else {
-    rpm_last = rpm;
-    justfixed--;
-    if (justfixed <= 0){justfixed = 0;}
-  }
-
-
-
-
-if (smoothing){  
-  total= total - rpmarray[index]; 
+if (smoothing){
+if (average != 0){
+  if ((rpm-average > 2500) || (average-rpm > 2500)){                 
+      if(DEBUG){
+      Serial.print("FIXED!  ");
+      Serial.println(rpm);  }      
+        rpm = rpm_last;        
+      }
+}
+  total = total - rpmarray[index]; 
   rpmarray[index] = rpm;
-  total= total + rpmarray[index]; 
+  total = total + rpmarray[index]; 
   index = index + 1;   
   if (index >= numReadings){              
       index = 0;    
    }                       
-  average = total / numReadings; 
+  average = total / numReadings;
+ 
   if(DEBUG){Serial.print("average: ");
   Serial.println(average);}
-rpm = average;       
+
+rpm = average;
+       
 }
 
-
-
-if (rpm > 0 ){
+if (timeoutCounter > 0){   
+  if (rpm_last > 0 ){
       if(DEBUG){Serial.println(rpm); }
-      if (rpm > 9999){ 
-        matrix.println(rpm/10);
-         matrix.writeDisplay();
-      }else{
-        matrix.println(rpm);
-         matrix.writeDisplay();}
+      if (rpm > 9999){ display.showNumberDec(rpm/10);
+      }else{display.showNumberDec(rpm); }
 
-  if (digitalRead(dimPin) != dimmer){
-         dimmer = digitalRead(dimPin);
-          color1 = load_color(c1); 
-          color2 = load_color(c2); 
-          color3 = load_color(c3); 
-          flclr1 = load_color(c4); 
-          flclr2 = load_color(c5);
-           if (digitalRead(dimPin) == dimmerlogic){      
-                matrix.setBrightness(dimval); 
-                matrix.writeDisplay(); 
-              }else{
-                matrix.setBrightness(brightval); 
-                matrix.writeDisplay();       
-              }
-  }           
-  } else {
-    rpm = 0;
-    matrix.clear(); 
-    matrix.writeDisplay(); 
-    clearStrip();
-    strip.show(); 
-  }
-
-
+    if (digitalRead(dimPin) != dimmer){
+       dimmer = digitalRead(dimPin);
+        color1 = load_color(c1); 
+        color2 = load_color(c2); 
+        color3 = load_color(c3); 
+        flclr1 = load_color(c4); 
+        flclr2 = load_color(c5);
+        if (digitalRead(dimPin) == dimmerlogic){
+          display.setBrightness(dimval); 
+         }else{
+          display.setBrightness(brightval);         
+         }
+    }
+ }  else {
+      display.setColon(false);         
+      SEG_WRITE[0] =  (SEG_A | SEG_F| SEG_E | SEG_D);           // [
+            SEG_WRITE[1] =  (SEG_A | SEG_D);                    //=
+            SEG_WRITE[2] =  (SEG_A | SEG_D);                    //=              
+            SEG_WRITE[3] =  (SEG_A | SEG_D | SEG_B | SEG_C);    // ]
+      display.setSegments(SEG_WRITE);
+    }
+  rpm_last = rpm;             
+} else {
+  rpm = 0;
+    display.setColon(false);         
+    SEG_WRITE[0] =  (SEG_A | SEG_F| SEG_E | SEG_D);           // [
+          SEG_WRITE[1] =  (SEG_A | SEG_D);                    //=
+          SEG_WRITE[2] =  (SEG_A | SEG_D);                    //=              
+          SEG_WRITE[3] =  (SEG_A | SEG_D | SEG_B | SEG_C);    // ]
+    display.setSegments(SEG_WRITE);
+  clearStrip();
+  strip.show(); 
+}
+  
+if (timeoutCounter > 0){ timeoutCounter--;}  
 
 if (rpm < shift_rpm){
   int a; 
@@ -363,15 +369,12 @@ if (rpm < shift_rpm){
              strip.setPixelColor(a,color3);  
           break;        
         }
-    } else {  
+    } else {
   strip.setPixelColor(a, strip.Color(0, 0, 0));    
     }
-
-   strip.show();
-   
-   //delay(1);
-
+   strip.show();    
   }
+
 } else {
 
   unsigned long currentMillis = millis();
@@ -389,10 +392,9 @@ if (rpm < shift_rpm){
              strip.setPixelColor(i, flclr2); 
           }
     strip.show();
-    }      
+      }
 }
-
-
+   
 
   //Poll the Button, if pushed, cue animation and enter menu subroutine 
   if (digitalRead(button_pin) == LOW){ 
@@ -416,7 +418,7 @@ if (rpm < shift_rpm){
   
   menuvar=1; 
   menu(); 
-  }  
+  } 
 } 
 
 
@@ -608,7 +610,6 @@ if(DEBUG){
 
 
 
-
 /*************************
  * MENU SYSTEM
  *************************/
@@ -630,146 +631,138 @@ while (menuvar == 1){
 //Poll the rotary encoder button to enter menu items
      if (digitalRead(button_pin) == LOW){ 
         delay(250); 
-        menu_enter = 1;
-        prev_variable = 0; 
+        menu_enter = 1; 
       } 
-
+      
       if (prev_menu != rotaryval || menu_enter == 1 || menu_enter == 2){      
           prev_menu = rotaryval;
           if (menu_enter == 2){menu_enter = 0;}
 
-          if (digitalRead(dimPin) == dimmerlogic){      
-              matrix.setBrightness(dimval); 
-              matrix.writeDisplay(); 
-            }else{
-              matrix.setBrightness(brightval); 
-              matrix.writeDisplay();       
-            }
+         if (digitalRead(dimPin)== dimmerlogic){
+            display.setBrightness(dimval);  
+          } else {
+            display.setBrightness(brightval);   
+          }
       
-    
-  switch (rotaryval){ 
-  
-    case 0: //Menu Screen. Exiting saves variables to EEPROM 
-      matrix.writeDigitRaw(0,0x39); //e 
-      matrix.writeDigitRaw(1,0x9); //x 
-      matrix.writeDigitRaw(3,0x9); //i 
-      matrix.writeDigitRaw(4,0xF); //t 
-      
-      //Poll the Button to exit 
-      if (menu_enter == 1){ 
-        delay(250); 
-        rotaryval = 0; 
-        menuvar=0;
-        menu_enter = 0;  
+        switch (rotaryval){ 
         
-        writeEEPROM(); 
-        getEEPROM(); 
-        buildarrays();
-        
-        //Ascend strip 
-        for (int i=0; i<(NUMPIXELS/2)+1; i++){ 
-        strip.setPixelColor(i, strip.Color(0, 0, 25)); 
-        strip.setPixelColor(NUMPIXELS-i, strip.Color(0, 0, 25)); 
-        strip.show(); 
-        delay(35); 
-        } 
-        // Descend Strip 
-        for (int i=0; i<(NUMPIXELS/2)+1; i++){ 
-        strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-        strip.setPixelColor(NUMPIXELS-i, strip.Color(0, 0, 0)); 
-        strip.show(); 
-        delay(35); 
-        }   
-      }     
-    break; 
-    
-    
-    case 1: //Adjust the global brightness 
-      matrix.writeDigitRaw(0,0x0); // 
-      matrix.writeDigitRaw(1,0x7C); //b 
-      matrix.writeDigitRaw(3,0x50); //r 
-      matrix.writeDigitRaw(4,0x78); //t 
+          case 0: //Menu Screen. Exiting saves variables to EEPROM 
+            SEG_WRITE[0] =  (SEG_A | SEG_F| SEG_E | SEG_D);     // [
+            SEG_WRITE[1] =  (SEG_A | SEG_D);                    //=
+            SEG_WRITE[2] =  (SEG_A | SEG_D);                    //=              
+            SEG_WRITE[3] =  (SEG_A | SEG_D | SEG_B | SEG_C);    // ]
+            display.setSegments(SEG_WRITE);
             
-      while (menu_enter == 1){ 
-      
-      int bright = rotary_process(); 
-      
-      if (bright == -128){ 
-        brightval--; 
-        sb++;
-      //  testbright = false;
-      } 
-      if (bright == 64){ 
-        brightval++; 
-        sb--; 
-     //   testbright = false;
-      } 
-      brightval = constrain (brightval, 0, 15); 
-      sb = constrain(sb, 1, 15); 
-
-      if (prev_variable != brightval){
-          prev_variable = brightval;
-      
-            color1 = load_color(c1); 
-            color2 = load_color(c2); 
-            color3 = load_color(c3); 
-            flclr1 = load_color(c4); 
-            flclr2 = load_color(c5); 
-            
-            matrix.setBrightness(brightval); 
-            matrix.println(brightval); 
-            matrix.writeDisplay(); 
-      
-           // if (testbright == false){
-            testlights(4);
-         //  testbright = true;
-         //   }
-      }
-
-
-     if (digitalRead(button_pin) == LOW){ 
-        delay(250); 
-        menu_enter = 2;
-        prev_variable = 0; 
-        clearStrip(); 
-        strip.show(); 
-        for(int i=0; i<NUMPIXELS+1; i++) { 
-          strip.setPixelColor(i, color1); 
-          strip.show(); 
-          delay(15); 
-          strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-          strip.show(); 
-        }         
-      }      
-      }     
-    break; 
-
-
-
-//dimPin
-          case 2: //Adjust the global brightness DIMMER (when Pin 9 == HIGH)
-            matrix.writeDigitRaw(0,0x0); // 
-            matrix.writeDigitRaw(1,0x5E); //D   
-            matrix.writeDigitRaw(3,0x30); //I          
-            matrix.writeDigitRaw(4,0x15); //m  
-  
+            //Poll the Button to exit 
+            if (menu_enter == 1){ 
+              delay(250); 
+              rotaryval = 0; 
+              menuvar=0;
+              menu_enter = 0;              
+              writeEEPROM(); 
+              getEEPROM(); 
+              buildarrays();
+              display.setColon(false);
+              //Ascend strip 
+              for (int i=0; i<(NUMPIXELS/2)+1; i++){ 
+              strip.setPixelColor(i, strip.Color(0, 0, 25)); 
+              strip.setPixelColor(NUMPIXELS-i, strip.Color(0, 0, 25)); 
+              strip.show(); 
+              delay(35); 
+              } 
+              // Descend Strip 
+              for (int i=0; i<(NUMPIXELS/2)+1; i++){ 
+              strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+              strip.setPixelColor(NUMPIXELS-i, strip.Color(0, 0, 0)); 
+              strip.show(); 
+              delay(35); 
+              }   
+            }     
+          break; 
+          
+          
+          case 1: //Adjust the global brightness 
+            SEG_WRITE[0] =  (SEG_G);                                 // -
+            SEG_WRITE[1] =  (SEG_F | SEG_E | SEG_D | SEG_C | SEG_G); //b
+            SEG_WRITE[2] =  (SEG_E | SEG_G);                         //r              
+            SEG_WRITE[3] =  (SEG_F | SEG_E | SEG_G | SEG_D);         //t      
+            display.setSegments(SEG_WRITE);      
             while (menu_enter == 1){ 
             
             int bright = rotary_process(); 
             
-     if (bright == -128){ 
-        dimsb++;
-        dimval--;
-        testbright = false;
-      } 
-      if (bright == 64){ 
-        dimsb--;
-        dimval++;
-        testbright = false;
-      } 
-                
-            dimval = constrain (dimval, 0, 15); 
-            dimsb = constrain(dimsb, 1, 15);
+            if (bright == -128){ 
+              sb++;
+              testbright = false;
+            } 
+            if (bright == 64){ 
+              sb--;
+              testbright = false;
+            } 
+
+            brightval  = map(sb,1,15,15,8);          
+            brightval = constrain (brightval, 8, 15); 
+            sb = constrain(sb, 1, 15); 
+            Serial.println(brightval);
+      
+            if (prev_variable != sb){
+                  prev_variable = sb;
+                  color1 = load_color(c1); 
+                  color2 = load_color(c2); 
+                  color3 = load_color(c3); 
+                  flclr1 = load_color(c4); 
+                  flclr2 = load_color(c5); 
+                  
+                  display.setBrightness(brightval); 
+                  display.showNumberDec(16-sb); 
+                  if (testbright == false){
+                  testlights(4);
+                  testbright = true;
+                  }
+              }
+      
+      
+           if (digitalRead(button_pin) == LOW){ 
+              delay(250); 
+              menu_enter = 2;
+              prev_variable = 0;
+              clearStrip(); 
+              strip.show(); 
+              for(int i=0; i<NUMPIXELS+1; i++) { 
+                strip.setPixelColor(i, color1); 
+                strip.show(); 
+                delay(15); 
+                strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                strip.show(); 
+              }         
+            }      
+            }     
+          break; 
+      
+         //dimPin
+          case 2: //Adjust the global brightness DIMMER (when Pin 9 == HIGH)
+            SEG_WRITE[0] =  (SEG_G);                                 // -
+            SEG_WRITE[1] =  (SEG_G | SEG_E | SEG_D | SEG_C | SEG_B);         //d   
+            SEG_WRITE[2] =  (SEG_E | SEG_F);                                 //i              
+            SEG_WRITE[3] =  (SEG_E | SEG_F | SEG_A | SEG_B | SEG_C);         //m    
+            display.setSegments(SEG_WRITE);      
+            while (menu_enter == 1){ 
+            
+            int bright = rotary_process(); 
+            
+            if (bright == -128){ 
+              dimsb++;
+              testbright = false;
+            } 
+            if (bright == 64){ 
+              dimsb--;
+              testbright = false;
+            } 
+
+            dimval  = map(dimsb,1,15,15,8);          
+            dimval = constrain (dimval, 8, 15); 
+            dimsb = constrain(dimsb, 1, 15); 
+            Serial.println(dimval);
       
             if (prev_variable != dimsb){
                   prev_variable = dimsb;
@@ -780,10 +773,8 @@ while (menuvar == 1){
                   flclr1 = load_color(c4); 
                   flclr2 = load_color(c5); 
                   
-            matrix.setBrightness(dimval); 
-            matrix.println(dimval); 
-            matrix.writeDisplay(); 
-            
+                  display.setBrightness(dimval); 
+                  display.showNumberDec(16-dimsb); 
                   if (testbright == false){
                   testlights(4);
                   testbright = true;
@@ -808,23 +799,23 @@ while (menuvar == 1){
               dimmerlogic = true;
               testbright = false;
             } 
-            //Serial.println(dimmerlogic);
+            Serial.println(dimmerlogic);
       
             if (prev_variable != dimmerlogic){
                   prev_variable = dimmerlogic;
                   
                 if (dimmerlogic == false){
-                    matrix.writeDigitRaw(0,0x0); //  
-                    matrix.writeDigitRaw(1,0x0); //    
-                    matrix.writeDigitRaw(3,0x76); //H 
-                    matrix.writeDigitRaw(4,0x30); //I
-                    matrix.writeDisplay();   
+                    SEG_WRITE[0] =  (SEG_G);                                         // -    
+                    SEG_WRITE[1] =  (SEG_G);                                         // -   
+                    SEG_WRITE[2] =  (SEG_F | SEG_E | SEG_C | SEG_G | SEG_B);         //H 
+                    SEG_WRITE[3] =  (SEG_E | SEG_F);                                 //i
+                    display.setSegments(SEG_WRITE);  
                } else if (dimmerlogic == true){                   
-                    matrix.writeDigitRaw(0,0x0); //  
-                    matrix.writeDigitRaw(1,0x0); //   
-                    matrix.writeDigitRaw(3,0x38); //L
-                    matrix.writeDigitRaw(4,0x5C); //o
-                    matrix.writeDisplay(); 
+                    SEG_WRITE[0] =  (SEG_G);                                         // -    
+                    SEG_WRITE[1] =  (SEG_G);                                         // -
+                    SEG_WRITE[2] =  (SEG_F | SEG_E | SEG_D);                          //L
+                    SEG_WRITE[3] =  (SEG_G | SEG_E | SEG_D | SEG_C );                 //o
+                    display.setSegments(SEG_WRITE);  
                 }
           
                   if (testbright == false){
@@ -852,735 +843,752 @@ while (menuvar == 1){
             }
           break; 
 
-    
-    case 3: // ACTIVATION RPM 
-      matrix.writeDigitRaw(0,0x0); // 
-      matrix.writeDigitRaw(1,0x77); //A 
-      matrix.writeDigitRaw(3,0x39); //C 
-      matrix.writeDigitRaw(4,0x78); //t 
-      
-
-      while (menu_enter == 1){      
-        int coloradjust1 = rotary_process(); 
-        
-        if (coloradjust1 == -128){activation_rpm=activation_rpm-10;} 
-        if (coloradjust1 == 64){activation_rpm=activation_rpm+10;}         
-        activation_rpm = constrain(activation_rpm, 0, 20000); 
-
-
-   if (prev_variable != activation_rpm) {
-      prev_variable = activation_rpm;     
-      if (activation_rpm<9999){        
-        matrix.println(activation_rpm); 
-        strip.setPixelColor(0, strip.Color(0, 0, 0));
-        } else {
-        matrix.println(activation_rpm-10000);
-        strip.setPixelColor(0, strip.Color(50, 50, 100));
-       // matrix.writeDigitRaw(2, 0x80);  
-        }
-        matrix.writeDisplay();         
-        strip.show();
-   }
-        
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          prev_variable = 0;
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, strip.Color(50, 50, 50)); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }        
-        } 
-      }   
-    break; 
-    
-    
-    case 4: // SHIFT RPM 
-      matrix.writeDigitRaw(0,0x6D); //S 
-      matrix.writeDigitRaw(1,0x76); //H 
-      matrix.writeDigitRaw(3,0x71); //F 
-      matrix.writeDigitRaw(4,0x78); //t       
           
-      while (menu_enter == 1){ 
+          case 3: // ACTIVATION RPM 
+            SEG_WRITE[0] =  (SEG_G);                                          // -
+            SEG_WRITE[1] =  (SEG_F | SEG_E | SEG_A | SEG_C | SEG_G | SEG_B);  //A
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_D);                          //C             
+            SEG_WRITE[3] =  ( SEG_F | SEG_E | SEG_G | SEG_D);                 //t      
+            display.setSegments(SEG_WRITE);  
+      
+            while (menu_enter == 1){      
+              int coloradjust1 = rotary_process();           
+              if (coloradjust1 == -128){activation_rpm=activation_rpm-10;} 
+              if (coloradjust1 == 64){activation_rpm=activation_rpm+10;}         
+              activation_rpm = constrain(activation_rpm, 0, 20000); 
               
-        int coloradjust1 = rotary_process(); 
-        
-        if (coloradjust1 == -128){shift_rpm = shift_rpm-10;}           
-        if (coloradjust1 == 64){shift_rpm = shift_rpm+10;}                   
-        shift_rpm = constrain(shift_rpm, 0, 20000); 
-        
-        if (prev_variable != shift_rpm) {
-           prev_variable = shift_rpm;
-              if (shift_rpm<9999){        
-              matrix.println(shift_rpm); 
-              strip.setPixelColor(0, strip.Color(0, 0, 0));
-              } else {
-              matrix.println(shift_rpm-10000);
-              strip.setPixelColor(0, strip.Color(50, 50, 100));
-             // matrix.writeDigitRaw(2, 0x80);  
+              if (prev_variable != activation_rpm) {
+                    prev_variable = activation_rpm;
+                    if (activation_rpm<9999){        
+                      display.showNumberDec(activation_rpm); 
+                      strip.setPixelColor(0, strip.Color(0, 0, 0));
+                      } else {
+                      display.showNumberDec(activation_rpm-10000);
+                      strip.setPixelColor(0, strip.Color(50, 50, 100)); 
+                      }    
+                      strip.show();
+              }   
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250);
+                prev_variable = 0;
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, strip.Color(50, 50, 50)); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }        
+              } 
+            }   
+          break; 
+          
+          
+          case 4: // SHIFT RPM 
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);    //S                                
+            SEG_WRITE[1] =  (SEG_F | SEG_E | SEG_C | SEG_G | SEG_B);    //H
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_F | SEG_A);             //F              
+            SEG_WRITE[3] =  ( SEG_F | SEG_E | SEG_G | SEG_D);           //t
+            display.setSegments(SEG_WRITE);  
+            
+            while (menu_enter == 1){ 
+                    
+              int coloradjust1 = rotary_process(); 
+              
+              if (coloradjust1 == -128){shift_rpm = shift_rpm-10;}           
+              if (coloradjust1 == 64){shift_rpm = shift_rpm+10;}                   
+              shift_rpm = constrain(shift_rpm, 0, 20000); 
+      
+              if (prev_variable != shift_rpm) {
+                   prev_variable = shift_rpm;
+                  if (shift_rpm<9999){        
+                    display.showNumberDec(shift_rpm); 
+                    strip.setPixelColor(0, strip.Color(0, 0, 0));
+                    } else {
+                    display.showNumberDec(shift_rpm-10000);
+                    strip.setPixelColor(0, strip.Color(50, 50, 100)); 
+                  }       
+                  strip.show(); 
               }
-          matrix.writeDisplay();         
-          strip.show(); 
-        }
-        
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2;
-          prev_variable = 0; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, strip.Color(50, 50, 50)); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }        
-        } 
-      }    
-    break;
-
-
-
-
-     case 5:  //RPM SENSE MODE
-    //senseoption
-     matrix.writeDigitRaw(0,0x6D); //S
-     matrix.writeDigitRaw(1,0x79); //E
-     matrix.writeDigitRaw(3,0x54); //n
-     matrix.writeDigitRaw(4,0x6D); //S
-      
-      while (menu_enter == 1){         
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){senseoption--;}           
-        if (coloradjust1 == 64){senseoption++;}                   
-        senseoption = constrain(senseoption, 1, 2); 
-
-        if (prev_variable != senseoption) {
-            prev_variable = senseoption;
-
-        switch (senseoption){
-          case 1:
-              matrix.writeDigitRaw(0,0x30); //I
-              matrix.writeDigitRaw(1,0x54); //n
-              matrix.writeDigitRaw(3,0x78); //t
-              matrix.writeDigitRaw(4,0x50); //r
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2; 
+                prev_variable = 0;
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, strip.Color(50, 50, 50)); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }        
+              } 
+            }    
           break;
-
-          case 2:
-              matrix.writeDigitRaw(0,0x00); //
-              matrix.writeDigitRaw(1,0x00); //
-              matrix.writeDigitRaw(3,0x71); //F
-              matrix.writeDigitRaw(4,0x50); //r
-          break;   
-        }
-        }
-
-        matrix.writeDisplay();         
+      
+      
+           case 5:  //RPM SENSE MODE
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);            //S       
+            SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D);            //E   
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_C);                            //n              
+            SEG_WRITE[3] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);            //S
+            display.setSegments(SEG_WRITE);  
+      
+            
+            while (menu_enter == 1){         
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){senseoption--;}           
+              if (coloradjust1 == 64){senseoption++;}                   
+              senseoption = constrain(senseoption, 1, 2); 
+      
+      
+              if (prev_variable != senseoption) {
+                   prev_variable = senseoption;
+              switch (senseoption){
+                case 1:
+                    SEG_WRITE[0] =  (SEG_E | SEG_F);                                 //i      
+                    SEG_WRITE[1] =  (SEG_E | SEG_G | SEG_C);                         //n 
+                    SEG_WRITE[2] =  ( SEG_F | SEG_E | SEG_G | SEG_D);                //t   
+                    SEG_WRITE[3] =  (SEG_E | SEG_G);                                 //r
+                    display.setSegments(SEG_WRITE);  
+                break;
+      
+                case 2:
+      
+                    SEG_WRITE[0] =  (SEG_G);                                         // -    
+                    SEG_WRITE[1] =  (SEG_G);                                         // -
+                    SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_F | SEG_A);                  //F 
+                    SEG_WRITE[3] =  (SEG_E | SEG_G);                                 //r
+                    display.setSegments(SEG_WRITE);  
+                break;   
+              }
+      
+              }     
+                 
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2;
+                prev_variable = 0;
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, strip.Color(50, 50, 50)); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }
+      
+                    
+                    SEG_WRITE[0] =  (SEG_F | SEG_E | SEG_D | SEG_C | SEG_G);     //b
+                    SEG_WRITE[1] =  (SEG_G | SEG_E | SEG_D | SEG_C );            //o
+                    SEG_WRITE[2] =  (SEG_G | SEG_E | SEG_D | SEG_C );            //o
+                    SEG_WRITE[3] =  (SEG_F | SEG_E | SEG_G | SEG_D);             //t
+                    display.setSegments(SEG_WRITE);  
+             delay(1000);
+             writeEEPROM(); 
+             resetFunc();
+              } 
+            }    
+           break;
+      
+      
+           case 6:  //SMOOTHING (conditioning)
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_E | SEG_D);     //C 
+            SEG_WRITE[1] =  (SEG_G | SEG_E | SEG_D | SEG_C );   //O
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_C);         //n                
+            SEG_WRITE[3] =  (SEG_G | SEG_E | SEG_D | SEG_C | SEG_B);  //d
+            display.setSegments(SEG_WRITE);   
+            while (menu_enter == 1){ 
+              
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){smoothing--;}           
+              if (coloradjust1 == 64){smoothing++;}                   
+              smoothing = constrain(smoothing, 0, 1); 
+      
+          if (prev_variable != smoothing) {
+                   prev_variable = smoothing;
+            if (smoothing){
+            SEG_WRITE[0] =  (SEG_G);                                      // -
+            SEG_WRITE[1] =  (SEG_G);                                      // -
+            SEG_WRITE[2] =  (SEG_G | SEG_E | SEG_D | SEG_C );             //o
+            SEG_WRITE[3] =  (SEG_E | SEG_G | SEG_C);                      //n  
+            display.setSegments(SEG_WRITE);  
+              
+      
+              
+            }else{
+      
+      
+            SEG_WRITE[0] =  (SEG_G);                                      // -
+            SEG_WRITE[1] =  (SEG_G | SEG_E | SEG_D | SEG_C );             //o
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_F | SEG_A);              //F  
+            SEG_WRITE[3] =  (SEG_E | SEG_G | SEG_F | SEG_A);              //F    
+            display.setSegments(SEG_WRITE);  
+             }
+             
+          }      
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2; 
+                prev_variable = 0;
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, strip.Color(50, 50, 50)); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }             
+              } 
+            }    
+           break;
+      
+      
+       case 7:  // PULSES PER REVOLUTION
+            SEG_WRITE[0] =  (SEG_G);     // -
+            SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_B); //P
+            SEG_WRITE[2] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_B); //P               
+            SEG_WRITE[3] =  (SEG_E | SEG_G);                         //r
+            display.setSegments(SEG_WRITE);
+            
+            while (menu_enter == 1){               
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){cal--;}           
+              if (coloradjust1 == 64){cal++;}                   
+              cal = constrain(cal, 1, 255); 
+      
+              if (prev_cal != cal){
+                display.setColon(true);
+                display.showNumberDec(cal*10);                
+                display.setBrightness(brightval/3);  
+                prev_cal = cal;
            
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2;
-          prev_variable = 0; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, strip.Color(50, 50, 50)); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }
-
-       matrix.writeDigitRaw(0,0x7C); //b
-       matrix.writeDigitRaw(1,0x5C); //o 
-       matrix.writeDigitRaw(3,0x5C); //o
-       matrix.writeDigitRaw(4,0x78); //t 
-       matrix.writeDisplay();
-       delay(1000);
-       writeEEPROM(); 
-       resetFunc();
-        } 
-      }    
-     break;
-
-
-     case 6:  //SMOOTHING (conditioning)
-     matrix.writeDigitRaw(0,0x39); //c
-     matrix.writeDigitRaw(1,0x5C); //o'
-     matrix.writeDigitRaw(3,0x54); //n'
-     matrix.writeDigitRaw(4,0x5E); //d
-      
-      while (menu_enter == 1){ 
-        
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){smoothing--;}           
-        if (coloradjust1 == 64){smoothing++;}                   
-        smoothing = constrain(smoothing, 0, 1); 
-
-        if (prev_variable != smoothing) {
-            prev_variable = smoothing;
-      if (smoothing){
-              matrix.writeDigitRaw(0,0x0); //
-               matrix.writeDigitRaw(1,0x0); // 
-               matrix.writeDigitRaw(3,0x3F); // O
-               matrix.writeDigitRaw(4,0x54); //n 
-        
-      }else{
-              matrix.writeDigitRaw(0,0x0); //
-               matrix.writeDigitRaw(1,0x3F); //O
-               matrix.writeDigitRaw(3,0x71); //F
-               matrix.writeDigitRaw(4,0x71); //F 
-       }
-        matrix.writeDisplay();   
-     }      
-           
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2; 
-          prev_variable = 0;
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, strip.Color(50, 50, 50)); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }             
-        } 
-      }    
-     break;
-
-
- case 7:  // PULSES PER REVOLUTION
-      matrix.writeDigitRaw(0,0x00); //
-     matrix.writeDigitRaw(1,0x73); //P
-     matrix.writeDigitRaw(3,0x73); //P
-     matrix.writeDigitRaw(4,0x50); //r 
-      
-      while (menu_enter == 1){ 
-        
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){cal--;}           
-        if (coloradjust1 == 64){cal++;}                   
-        cal = constrain(cal, 0, 255); 
-        
-        if (prev_cal != cal){
-          matrix.printFloat(cal/10.0,1);
-          //matrix.writeDigitRaw(3,0x80); //.
-          matrix.setBrightness(brightval/3); 
-          matrix.writeDisplay();   
-          prev_cal = cal;
-          delay(500);     
-        }
- 
-        switch (senseoption){
-          case 1:
-             rpm = long(60e7/cal)/(float)interval;
-          break;
-        
-          case 2: 
-            if (FreqMeasure.available()) {
-            rpm = (600/cal)* FreqMeasure.countToFrequency(FreqMeasure.read());
-            timeoutCounter = timeoutValue;
-            }
-          break;  
-        }
-        
-
-        if (rpm > 9999){ matrix.println(rpm/10);
-        }else{matrix.println(rpm); }
-        matrix.setBrightness(brightval);
-        matrix.writeDisplay();         
-   
-       if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, strip.Color(50, 50, 50)); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }
-        } 
-      }    
-     break;
-
-
-     case 8:  // NUMBER OF LEDS
-      matrix.writeDigitRaw(0,0x54); //n
-     matrix.writeDigitRaw(1,0x38); //L
-     matrix.writeDigitRaw(3,0x79); //E
-     matrix.writeDigitRaw(4,0x5E); //D 
-      
-      while (menu_enter == 1){ 
-        
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){NUMPIXELS--;}           
-        if (coloradjust1 == 64){NUMPIXELS++;}                   
-        NUMPIXELS = constrain(NUMPIXELS, 0, 32); 
-        
-        if (prev_variable != NUMPIXELS) {
-             prev_variable = NUMPIXELS;
-        matrix.println(NUMPIXELS); 
-        matrix.writeDisplay();   
-        }      
-   
-       if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2;
-           prev_variable = 0;
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, strip.Color(50, 50, 50)); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }
-
-       matrix.writeDigitRaw(0,0x7C); //b
-       matrix.writeDigitRaw(1,0x5C); //o 
-       matrix.writeDigitRaw(3,0x5C); //o
-       matrix.writeDigitRaw(4,0x78); //t 
-       matrix.writeDisplay();
-       delay(1000);
-       writeEEPROM(); 
-       resetFunc();
-        } 
-      }    
-     break;    
-    
- 
-     case 9:  // Color Segmentation                    
-     matrix.writeDigitRaw(0,0x00); //
-     matrix.writeDigitRaw(1,0x6D); //S 
-     matrix.writeDigitRaw(3,0x79); //E
-     matrix.writeDigitRaw(4,0x3D); //G 
-      
-      if (menu_enter == 1){
-        color1 = load_color(c1); 
-                  color2 = load_color(c2); 
-                  color3 = load_color(c3); 
-                  flclr1 = load_color(c4); 
-                  flclr2 = load_color(c5); 
-          build_segments();
-          menu_enter = 2;
-          current_seg_number = 1;
-          seg_mover = 0;
-          clearStrip(); 
-          strip.show();
-          clearStrip(); 
-          buildarrays();
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, color1); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }
-       }
-break;    
-
-
-     case 10:  // PIXEL ANIMATION MODE
-
-matrix.writeDigitRaw(0,0x77); //A 
-matrix.writeDigitRaw(1,0x54); //n
-matrix.writeDigitRaw(3,0x10); //i 
-matrix.writeDigitRaw(4,0x15); //m
-    
-      while (menu_enter == 1){        
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){pixelanim--;} 
-        if (coloradjust1 == 64){pixelanim++;}         
-        pixelanim = constrain(pixelanim, 1, 3);        
-        matrix.println(pixelanim); 
-        matrix.writeDisplay(); 
                 
-          if (prev_animation != pixelanim){
-           if(DEBUG){ Serial.println("Animation Change");}
-          prev_animation = pixelanim;
+                delay(500);     
+              }
+       
+              switch (senseoption){
+                case 1:
+                   rpm = long(60e7/cal)/(float)interval;
+                break;
+              
+                case 2: 
+                  if (FreqMeasure.available()) {
+                  rpm = (600/cal)* FreqMeasure.countToFrequency(FreqMeasure.read());
+                  timeoutCounter = timeoutValue;
+                  }
+                break;  
+              }
+
+              Serial.println(rpm);
+              display.setColon(false);
+              if (rpm > 9999){ display.showNumberDec(rpm/10);
+              }else{display.showNumberDec(rpm); }
+              display.setBrightness(brightval);      
+              
+                 
+             if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2;
+                display.setColon(false);
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, strip.Color(50, 50, 50)); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }
+              } 
+            }    
+           break;
+      
+     
+           case 8:  // NUMBER OF LEDS
+            SEG_WRITE[0] =  (SEG_E | SEG_G | SEG_C);                // n
+            SEG_WRITE[1] =  (SEG_F | SEG_E | SEG_D);                 //L
+            SEG_WRITE[2] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D); //E               
+            SEG_WRITE[3] =  (SEG_G | SEG_E | SEG_D | SEG_C | SEG_B); //d
+            display.setSegments(SEG_WRITE);
+            
+            while (menu_enter == 1){ 
+              
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){NUMPIXELS--;}           
+              if (coloradjust1 == 64){NUMPIXELS++;}                   
+              NUMPIXELS = constrain(NUMPIXELS, 0, 32); 
+      
+              if (prev_variable != NUMPIXELS) {
+                   prev_variable = NUMPIXELS;
+              display.showNumberDec(NUMPIXELS);       
+      
+              }
+             if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2;
+                prev_variable = 0;
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, strip.Color(50, 50, 50)); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }
+      
+            SEG_WRITE[0] =  (SEG_F | SEG_E | SEG_D | SEG_C | SEG_G);      //b
+            SEG_WRITE[1] =  (SEG_G | SEG_E | SEG_D | SEG_C );             //o
+            SEG_WRITE[2] =  (SEG_G | SEG_E | SEG_D | SEG_C );             //o              
+            SEG_WRITE[3] =  (SEG_F | SEG_E | SEG_G | SEG_D);              //t
+            display.setSegments(SEG_WRITE);
+             delay(1000);
+             writeEEPROM(); 
+             resetFunc();
+              } 
+            }    
+           break;    
+          
+       
+           case 9:  // Color Segmentation   
+      
+            SEG_WRITE[0] =  (SEG_G);// -
+            SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D); //S
+            SEG_WRITE[2] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D); //E               
+            SEG_WRITE[3] =  (SEG_A | SEG_F | SEG_E | SEG_D | SEG_C); //G
+            display.setSegments(SEG_WRITE);
+                           
+            
+            if (menu_enter == 1){
                   color1 = load_color(c1); 
                   color2 = load_color(c2); 
                   color3 = load_color(c3); 
                   flclr1 = load_color(c4); 
                   flclr2 = load_color(c5); 
+                build_segments();
+                menu_enter = 2;
+                current_seg_number = 1;
+                seg_mover = 0;
+                clearStrip(); 
+                strip.show();
+                clearStrip(); 
+                buildarrays();
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, color1); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }
+             }
+      break;    
+      
+      
+           case 10:  // PIXEL ANIMATION MODE
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_B | SEG_E | SEG_G | SEG_C); //A
+            SEG_WRITE[1] =  (SEG_E | SEG_G | SEG_C);                         //n
+            SEG_WRITE[2] =  (SEG_E | SEG_F);                                 //i               
+            SEG_WRITE[3] =  (SEG_E | SEG_F | SEG_A | SEG_B | SEG_C);         //m
+            display.setSegments(SEG_WRITE);
           
-          if (pixelanim == 1){
-            for (int a = 0; a<NUMPIXELS; a++){
-              strip.setPixelColor(a,color1);
-              strip.show();
-              delay(50);
-            }
-          }else if(pixelanim == 2){
-            for (int a = NUMPIXELS/2; a<NUMPIXELS; a++){
-              strip.setPixelColor(a,color1);
-              strip.setPixelColor(NUMPIXELS-a,color1);
-              strip.show();
-              delay(75);
+            while (menu_enter == 1){        
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){pixelanim--;} 
+              if (coloradjust1 == 64){pixelanim++;}         
+              pixelanim = constrain(pixelanim, 1, 3);        
+              display.showNumberDec(pixelanim); 
+      
+                      
+                if (prev_animation != pixelanim){
+                 if(DEBUG){ Serial.println("Animation Change");}
+                prev_animation = pixelanim;
+                  color1 = load_color(c1); 
+                  color2 = load_color(c2); 
+                  color3 = load_color(c3); 
+                  flclr1 = load_color(c4); 
+                  flclr2 = load_color(c5); 
+                
+                if (pixelanim == 1){
+                  for (int a = 0; a<NUMPIXELS; a++){
+                    strip.setPixelColor(a,color1);
+                    strip.show();
+                    delay(50);
+                  }
+                }else if(pixelanim == 2){
+                  for (int a = NUMPIXELS/2; a<NUMPIXELS; a++){
+                    strip.setPixelColor(a,color1);
+                    strip.setPixelColor(NUMPIXELS-a,color1);
+                    strip.show();
+                    delay(75);
+                  } 
+                } else if(pixelanim == 3) {
+                  for (int a = NUMPIXELS; a>-1; a--){
+                    strip.setPixelColor(a,color1);
+                    strip.show();
+                    delay(50);
+                  }
+                }
+                clearStrip();
+                }
+      
+              
+              if (digitalRead(button_pin) == LOW){           
+                delay(250);
+                menu_enter = 2;
+                clearStrip(); 
+                strip.show(); 
+      
+              SEG_WRITE[0] =  (SEG_E | SEG_G);                                      //r
+              SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D);              //E  
+              SEG_WRITE[2] =  (SEG_G | SEG_E | SEG_D | SEG_C | SEG_B);              //d              
+              SEG_WRITE[3] =  (SEG_G | SEG_E | SEG_D | SEG_C );                     //o
+              display.setSegments(SEG_WRITE);
+             delay(1000);
+              SEG_WRITE[0] =  (SEG_G);                                              // -
+              SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);              //S 
+              SEG_WRITE[2] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D);              //E            
+              SEG_WRITE[3] =  (SEG_A | SEG_F | SEG_E | SEG_D | SEG_C);              //G
+              display.setSegments(SEG_WRITE);
+             delay(1000);
+              SEG_WRITE[0] =  (SEG_G);                                              // -
+              SEG_WRITE[1] =  (SEG_G);                                              // -
+              SEG_WRITE[2] =  (SEG_G);                                              // -            
+              SEG_WRITE[3] =  (SEG_G);                                              // -
+              display.setSegments(SEG_WRITE);
+             delay(500);
+             build_segments();
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, color1); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }
+           }        
+          } 
+         break;  
+      
+              
+          
+          case 11: //Adjust Color #1 
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_D | SEG_E);    //C
+            SEG_WRITE[1] =  (SEG_E | SEG_F | SEG_D);            //L
+            SEG_WRITE[2] =  (SEG_E | SEG_G);                    //r               
+            SEG_WRITE[3] =  (SEG_B | SEG_C);                    //1
+            display.setSegments(SEG_WRITE);
+            
+           while (menu_enter == 1){ 
+              
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){c1--;} 
+              if (coloradjust1 == 64){c1++;}         
+              c1 = constrain(c1, 0, 255); 
+      
+              if (prev_color != c1){
+                prev_color = c1;
+                color1 = load_color(c1); 
+                testlights(1);
+              }
+            
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                prev_color = 0;
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, color1); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }        
+              } 
             } 
-          } else if(pixelanim == 3) {
-            for (int a = NUMPIXELS; a>-1; a--){
-              strip.setPixelColor(a,color1);
-              strip.show();
-              delay(50);
-            }
-          }
-          clearStrip();
-          }
-
-        
-        if (digitalRead(button_pin) == LOW){           
-          delay(250);
-          menu_enter = 2;
-          clearStrip(); 
-          strip.show(); 
-       matrix.writeDigitRaw(0,0x50); //r
-       matrix.writeDigitRaw(1,0x79); //E 
-       matrix.writeDigitRaw(3,0x5E); //d
-       matrix.writeDigitRaw(4,0x5C); //o 
-       matrix.writeDisplay();
-       delay(1000);
-       matrix.writeDigitRaw(0,0x00); //
-       matrix.writeDigitRaw(1,0x6D); //S 
-       matrix.writeDigitRaw(3,0x79); //E
-       matrix.writeDigitRaw(4,0x3D); //G 
-       matrix.writeDisplay();
-       delay(1000);
-       matrix.writeDigitRaw(0,0x00); //
-       matrix.writeDigitRaw(1,0x00); //
-       matrix.writeDigitRaw(3,0x00); //
-       matrix.writeDigitRaw(4,0x00); //
-       matrix.writeDisplay();
-       delay(500);
-       build_segments();
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, color1); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }
-     }        
-    } 
-   break;  
-
-        
-    
-    case 11: //Adjust Color #1     
-      matrix.writeDigitRaw(0,0x39); //C 
-      matrix.writeDigitRaw(1,0x38); //L 
-      matrix.writeDigitRaw(3,0x33); //R 
-      matrix.writeDigitRaw(4,0x6); //1 
-      
-     while (menu_enter == 1){ 
-        
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){c1--;} 
-        if (coloradjust1 == 64){c1++;}         
-        c1 = constrain(c1, 0, 255); 
-
-        if (prev_color != c1){
-          prev_color = c1;
-          color1 = load_color(c1); 
-          testlights(1);
-        }
-      
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          prev_color = 0;
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, color1); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }        
-        } 
-      } 
-    break; 
-       
-    
-    
-    case 12: //Adjust Color #2 
-      matrix.writeDigitRaw(0,0x39); //C 
-      matrix.writeDigitRaw(1,0x38); //L 
-      matrix.writeDigitRaw(3,0x33); //R 
-      matrix.writeDigitRaw(4,0x5B); //2 
-           
-      while (menu_enter == 1){ 
-      
-        int coloradjust1 = rotary_process(); 
-        
-        if (coloradjust1 == -128){c2--;} 
-        if (coloradjust1 == 64){c2++;}         
-        c2 = constrain(c2, 0, 255); 
-        
-        if (prev_color != c2){
-          prev_color = c2;
-          color2 = load_color(c2); 
-          testlights(2);
-        }
-        
-        
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          prev_color = 0;
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, color2); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }          
-        } 
-      }    
-    break; 
-    
-    case 13: //Adjust Color #3 
-      matrix.writeDigitRaw(0,0x39); //C 
-      matrix.writeDigitRaw(1,0x38); //L 
-      matrix.writeDigitRaw(3,0x33); //R 
-      matrix.writeDigitRaw(4,0x4F); //3 
-            
-      while (menu_enter == 1){       
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){c3--;} 
-        if (coloradjust1 == 64){c3++;}        
-        c3 = constrain(c3, 0, 255); 
-        
-         if (prev_color != c3){
-          prev_color = c3;
-          color3 = load_color(c3); 
-          testlights(3);
-        }
-        
-        
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          prev_color = 0;
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, color3); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }       
-        } 
-      }    
-    break; 
-    
-    case 14: //Adjust Color #4 
-      matrix.writeDigitRaw(0,0x6D); //S 
-      matrix.writeDigitRaw(1,0x39); //C 
-      matrix.writeDigitRaw(3,0x0); // 
-      matrix.writeDigitRaw(4,0x6); //1 
-            
-      while (menu_enter == 1){       
-        int coloradjust1 = rotary_process();         
-        if (coloradjust1 == -128){c4--;} 
-        if (coloradjust1 == 64){c4++;} 
-        
-        c4 = constrain(c4, 0, 255); 
-        
-        flclr1 = load_color(c4);        
-        
-        for(int i=0; i<NUMPIXELS+1; i++) { 
-          strip.setPixelColor(i, flclr1); 
-        } 
-        
-        strip.show(); 
-               
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, flclr1); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }        
-        } 
-      }    
-    break; 
-    
-    case 15: //Adjust Color #5 
-      matrix.writeDigitRaw(0,0x6D); //S 
-      matrix.writeDigitRaw(1,0x39); //C 
-      matrix.writeDigitRaw(3,0x0); // 
-      matrix.writeDigitRaw(4,0x5B); //2 
-      
-      while (menu_enter == 1){       
-        int coloradjust1 = rotary_process();        
-        if (coloradjust1 == -128){c5--;} 
-        if (coloradjust1 == 64){c5++;}         
-        c5 = constrain(c5, 0, 255); 
-        
-        flclr2 = load_color(c5);        
-        
-        for(int i=0; i<NUMPIXELS+1; i++) { 
-          strip.setPixelColor(i, flclr2); 
-        } 
-        
-        strip.show(); 
-                
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, flclr2); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }        
-        } 
-      }     
-    break; 
-
-
-
-
-    
-    case 16:   //DEBUG MODE
-      matrix.writeDigitRaw(0,0x5E); //d 
-      matrix.writeDigitRaw(1,0x79); //E 
-      matrix.writeDigitRaw(3,0x7C); //b
-      matrix.writeDigitRaw(4,0x6F); //g 
-      
- while (menu_enter == 1){       
-        int coloradjust1 = rotary_process();        
-        if (coloradjust1 == -128){DEBUG--;} 
-        if (coloradjust1 == 64){DEBUG++;}         
-        DEBUG = constrain(DEBUG, 0, 1); 
-         
-      if (DEBUG== 1){
-               matrix.writeDigitRaw(0,0x0); //
-               matrix.writeDigitRaw(1,0x0); // 
-               matrix.writeDigitRaw(3,0x3F); // O
-               matrix.writeDigitRaw(4,0x54); //n 
-        
-      }else{
-              matrix.writeDigitRaw(0,0x0); //
-               matrix.writeDigitRaw(1,0x3F); //O
-               matrix.writeDigitRaw(3,0x71); //F
-               matrix.writeDigitRaw(4,0x71); //F 
-        
-      }
-
-    matrix.writeDisplay(); 
-                 
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, flclr2); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show(); 
-          }        
-        } 
-      }  
-    break;
-
-
-    case 17:   //RESET
-      matrix.writeDigitRaw(0,0x00); //
-      matrix.writeDigitRaw(1,0x50); //r
-      matrix.writeDigitRaw(3,0x6D); //S
-      matrix.writeDigitRaw(4,0x78); //t
-
-      
- while (menu_enter == 1){       
-        int coloradjust1 = rotary_process();        
-        if (coloradjust1 == -128){rst--;} 
-        if (coloradjust1 == 64){rst++;}         
-        rst = constrain(rst, 0, 1); 
-        
-      if (rst == 1){
-              matrix.writeDigitRaw(0,0x0); //
-              matrix.writeDigitRaw(1,0x6E); // Y
-              matrix.writeDigitRaw(3,0x79); // E
-              matrix.writeDigitRaw(4,0x6D); //S
-        
-      }else{
-               matrix.writeDigitRaw(0,0x0); //
-               matrix.writeDigitRaw(1,0x0); //
-               matrix.writeDigitRaw(3,0x54); //n
-               matrix.writeDigitRaw(4,0x5C); //O 
-        
-      }
-
-    matrix.writeDisplay(); 
- 
-                
-        if (digitalRead(button_pin) == LOW){ 
-          delay(250); 
-          menu_enter = 2; 
-          clearStrip(); 
-          strip.show(); 
-          for(int i=0; i<NUMPIXELS+1; i++) { 
-            strip.setPixelColor(i, flclr2); 
-            strip.show(); 
-            delay(15); 
-            strip.setPixelColor(i, strip.Color(0, 0, 0)); 
-            strip.show();
-          }
-                   if (rst ==1){
-
-               matrix.writeDigitRaw(0,0x0); //
-               matrix.writeDigitRaw(1,0x7C); // b
-               matrix.writeDigitRaw(3,0x6E); // Y
-               matrix.writeDigitRaw(4,0x79); //E
-               matrix.writeDisplay(); 
-               delay(500);
-               matrix.writeDigitRaw(0,0x5E); // d
-               matrix.writeDigitRaw(1,0x77); // a
-               matrix.writeDigitRaw(3,0x78); // t
-               matrix.writeDigitRaw(4,0x77); //a
-               matrix.writeDisplay(); 
-               delay(500);
-
-               for (int i = 0; i < 512; i++){EEPROM.write(i, 0);}
-               resetFunc();
-            
-            }       
-        } 
-      }  
-    break;
+          break; 
+             
           
-    } 
-   matrix.writeDisplay();  
-  }
-} 
+          
+          case 12: //Adjust Color #2 
+      
+          SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_D | SEG_E);              //C
+            SEG_WRITE[1] =  (SEG_E | SEG_F | SEG_D);                    //L
+            SEG_WRITE[2] =  (SEG_E | SEG_G);                            //r               
+            SEG_WRITE[3] =  (SEG_A | SEG_B | SEG_G | SEG_E | SEG_D);    //2
+            display.setSegments(SEG_WRITE);
+                 
+            while (menu_enter == 1){ 
+            
+              int coloradjust1 = rotary_process(); 
+              
+              if (coloradjust1 == -128){c2--;} 
+              if (coloradjust1 == 64){c2++;}         
+              c2 = constrain(c2, 0, 255); 
+              
+              if (prev_color != c2){
+                prev_color = c2;
+                color2 = load_color(c2); 
+                testlights(2);
+              }
+              
+              
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                prev_color = 0;
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, color2); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }          
+              } 
+            }    
+          break; 
+          
+          case 13: //Adjust Color #3 
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_D | SEG_E);            //C
+            SEG_WRITE[1] =  (SEG_E | SEG_F | SEG_D);                    //L
+            SEG_WRITE[2] =  (SEG_E | SEG_G);                            //r               
+            SEG_WRITE[3] =  (SEG_A | SEG_B | SEG_G | SEG_C | SEG_D);    //3
+            display.setSegments(SEG_WRITE);
+                  
+            while (menu_enter == 1){       
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){c3--;} 
+              if (coloradjust1 == 64){c3++;}        
+              c3 = constrain(c3, 0, 255); 
+              
+               if (prev_color != c3){
+                prev_color = c3;
+                color3 = load_color(c3); 
+                testlights(3);
+              }
+              
+              
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                prev_color = 0;
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, color3); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }       
+              } 
+            }    
+          break; 
+          
+          case 14: //Adjust Color #4 
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);            //S
+            SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_D | SEG_E);                    //C
+            SEG_WRITE[2] =  (SEG_G);                                            //-               
+            SEG_WRITE[3] =  (SEG_C | SEG_B);            //1
+            display.setSegments(SEG_WRITE);
+                  
+            while (menu_enter == 1){       
+              int coloradjust1 = rotary_process();         
+              if (coloradjust1 == -128){c4--;} 
+              if (coloradjust1 == 64){c4++;} 
+              
+              c4 = constrain(c4, 0, 255); 
+              
+              flclr1 = load_color(c4);        
+              
+              for(int i=0; i<NUMPIXELS+1; i++) { 
+                strip.setPixelColor(i, flclr1); 
+              } 
+              
+              strip.show(); 
+                     
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, flclr1); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }        
+              } 
+            }    
+          break; 
+          
+          case 15: //Adjust Color #5 
+      
+            SEG_WRITE[0] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);            //S
+            SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_D | SEG_E);                    //C
+            SEG_WRITE[2] =  (SEG_G);                                            //-               
+            SEG_WRITE[3] =  (SEG_A | SEG_B | SEG_G | SEG_E | SEG_D);            //2
+            display.setSegments(SEG_WRITE);
+            
+            while (menu_enter == 1){       
+              int coloradjust1 = rotary_process();        
+              if (coloradjust1 == -128){c5--;} 
+              if (coloradjust1 == 64){c5++;}         
+              c5 = constrain(c5, 0, 255); 
+              
+              flclr2 = load_color(c5);        
+              
+              for(int i=0; i<NUMPIXELS+1; i++) { 
+                strip.setPixelColor(i, flclr2); 
+              } 
+              
+              strip.show(); 
+                      
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, flclr2); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }        
+              } 
+            }     
+          break; 
+      
+          
+          case 16:   //DEBUG MODE
+          
+            SEG_WRITE[0] =  (SEG_G | SEG_E | SEG_D | SEG_C | SEG_B);          //d
+            SEG_WRITE[1] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D);          //E  
+            SEG_WRITE[2] =  (SEG_F | SEG_E | SEG_D | SEG_C | SEG_G);          //b             
+            SEG_WRITE[3] =  (SEG_A | SEG_F | SEG_B | SEG_G | SEG_C | SEG_D);  //g
+            display.setSegments(SEG_WRITE);
+              
+       while (menu_enter == 1){       
+              int coloradjust1 = rotary_process();        
+              if (coloradjust1 == -128){DEBUG--;} 
+              if (coloradjust1 == 64){DEBUG++;}         
+              DEBUG = constrain(DEBUG, 0, 1); 
+               
+            if (DEBUG== 1){
+            SEG_WRITE[0] =  (SEG_G);                                      // -
+            SEG_WRITE[1] =  (SEG_G);                                      // -
+            SEG_WRITE[2] =  (SEG_G | SEG_E | SEG_D | SEG_C );             //o
+            SEG_WRITE[3] =  (SEG_E | SEG_G | SEG_C);                      //n  
+            display.setSegments(SEG_WRITE);  
+              
+              
+            }else{
+            SEG_WRITE[0] =  (SEG_G);                                      // -
+            SEG_WRITE[1] =  (SEG_G | SEG_E | SEG_D | SEG_C );             //o
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_F | SEG_A);              //F  
+            SEG_WRITE[3] =  (SEG_E | SEG_G | SEG_F | SEG_A);              //F    
+            display.setSegments(SEG_WRITE); 
+              
+            }
+      
+      
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, flclr2); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show(); 
+                }        
+              } 
+            }  
+          break;
+      
+      
+          case 17:   //RESET
+      
+            SEG_WRITE[0] =  (SEG_G);                                  //-
+            SEG_WRITE[1] =  (SEG_E | SEG_G);                          //r 
+            SEG_WRITE[2] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);  //S              
+            SEG_WRITE[3] =  (SEG_F | SEG_G | SEG_E | SEG_D);          //t
+            display.setSegments(SEG_WRITE);
+      
+            
+       while (menu_enter == 1){       
+              int coloradjust1 = rotary_process();        
+              if (coloradjust1 == -128){rst--;} 
+              if (coloradjust1 == 64){rst++;}         
+              rst = constrain(rst, 0, 1); 
+              
+            if (rst == 1){
+      
+            SEG_WRITE[0] =  (SEG_G);                                               //-
+            SEG_WRITE[1] =  (SEG_F | SEG_B | SEG_G | SEG_C | SEG_D);              //Y
+            SEG_WRITE[2] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D);              //E            
+            SEG_WRITE[3] =  (SEG_A | SEG_F | SEG_G | SEG_C | SEG_D);              //S  
+            display.setSegments(SEG_WRITE);
+              
+            }else{
+            SEG_WRITE[0] =  (SEG_G);                                              //-
+            SEG_WRITE[1] =  (SEG_G);                                              // -
+            SEG_WRITE[2] =  (SEG_E | SEG_G | SEG_C);                              //n              
+            SEG_WRITE[3] =  (SEG_G | SEG_E | SEG_D | SEG_C );                     //o
+            display.setSegments(SEG_WRITE);
+              
+            }
+      
+                      
+              if (digitalRead(button_pin) == LOW){ 
+                delay(250); 
+                menu_enter = 2; 
+                clearStrip(); 
+                strip.show(); 
+                for(int i=0; i<NUMPIXELS+1; i++) { 
+                  strip.setPixelColor(i, flclr2); 
+                  strip.show(); 
+                  delay(15); 
+                  strip.setPixelColor(i, strip.Color(0, 0, 0)); 
+                  strip.show();
+                }
+                  if (rst ==1){
+                  SEG_WRITE[0] =  (SEG_G);                                              //-
+                  SEG_WRITE[1] =  (SEG_F | SEG_E | SEG_D | SEG_C | SEG_G);              //b
+                  SEG_WRITE[2] =  (SEG_F | SEG_B | SEG_G | SEG_C | SEG_D);              //Y              
+                  SEG_WRITE[3] =  (SEG_A | SEG_F | SEG_E | SEG_G | SEG_D);              //E  
+                  display.setSegments(SEG_WRITE);
+                     delay(500);
+      
+                  SEG_WRITE[0] =  (SEG_G | SEG_E | SEG_D | SEG_C | SEG_B);              //d
+                  SEG_WRITE[1] =  (SEG_F | SEG_E | SEG_A | SEG_C | SEG_G | SEG_B);      //A  
+                  SEG_WRITE[2] =  (SEG_F | SEG_E | SEG_G | SEG_D);                      //t            
+                  SEG_WRITE[3] =  (SEG_F | SEG_E | SEG_A | SEG_C | SEG_G | SEG_B);      //A  
+                  display.setSegments(SEG_WRITE);
+                     delay(500);
+      
+                     for (int i = 0; i < 512; i++){EEPROM.write(i, 0);}
+                     resetFunc();
+                  
+                  }       
+              } 
+            }  
+          break;
+                
+          }
+      } 
+  } 
 } 
 
 
@@ -1689,6 +1697,8 @@ EEPROM.write(31, dimmerlogic);
 
 
 
+
+
 //This sub clears the strip to all OFF 
 void clearStrip() { 
   for( int i = 0; i<strip.numPixels(); i++){ 
@@ -1743,6 +1753,8 @@ if (digitalRead(dimPin)== dimmerlogic || testdim == true){
   g = (g/sb); 
   b = (b/sb); 
 }
+     
+
 
 return strip.Color(r,g,b); 
 }
@@ -1824,13 +1836,13 @@ void check_first_run(){
 }
 
 
+
 void build_segments(){
 
 if (pixelanim == 3){seg_mover = NUMPIXELS-1;}
   
 while (current_seg_number<4){
-      matrix.println(current_seg_number);
-      matrix.writeDisplay();    
+      display.showNumberDec(current_seg_number);
 
       int coloradjust1 = rotary_process();         
         if (coloradjust1 == -128){seg_mover--;} 
@@ -2030,11 +2042,12 @@ while (current_seg_number<4){
 
 
 void sensorIsr() 
-{  
-   unsigned long now = micros();  
+{ 
+  unsigned long now = micros(); 
   interval = now - lastPulseTime; 
-  lastPulseTime = now;
+  lastPulseTime = now; 
   timeoutCounter = timeoutValue; 
 } 
+
 
 
