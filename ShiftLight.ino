@@ -1,4 +1,4 @@
-/* 
+ /* 
    ________    _                                   __ 
   / ____/ /_  (_)___  ____  ___  _________  __  __/ /_
  / /   / __ \/ / __ \/ __ \/ _ \/ ___/ __ \/ / / / __/
@@ -76,6 +76,7 @@ boolean testbright = false;
 long prev_variable; 
 int prev_menu;
 boolean testdim = false; 
+int justfixed; 
 
 //array for rpm averaging, filtering comparison
 const int numReadings = 5;
@@ -285,15 +286,23 @@ switch (senseoption){
   break;  
 }
 
+
+  if (((rpm > (rpm_last +(rpm_last*.2))) || (rpm < (rpm_last - (rpm_last*.2)))) && (rpm_last > 0) && (justfixed < 3)){
+        rpm = rpm_last;
+        justfixed++;
+        if(DEBUG){Serial.print("FIXED!  ");}
+        if(DEBUG){Serial.println(rpm_last);}         
+      
+  } else {
+    rpm_last = rpm;
+    justfixed--;
+    if (justfixed <= 0){justfixed = 0;}
+  }
+
+
+
+
 if (smoothing){
-if (average != 0){
-  if ((rpm-average > 2500) || (average-rpm > 2500)){                 
-      if(DEBUG){
-      Serial.print("FIXED!  ");
-      Serial.println(rpm);  }      
-        rpm = rpm_last;        
-      }
-}
   total = total - rpmarray[index]; 
   rpmarray[index] = rpm;
   total = total + rpmarray[index]; 
@@ -301,17 +310,13 @@ if (average != 0){
   if (index >= numReadings){              
       index = 0;    
    }                       
-  average = total / numReadings;
- 
+  average = total / numReadings; 
   if(DEBUG){Serial.print("average: ");
   Serial.println(average);}
-
-rpm = average;
-       
+rpm = average;       
 }
 
-if (timeoutCounter > 0){   
-  if (rpm_last > 0 ){
+if (rpm > 0 ){
       if(DEBUG){Serial.println(rpm); }
       if (rpm > 9999){ display.showNumberDec(rpm/10);
       }else{display.showNumberDec(rpm); }
@@ -329,15 +334,6 @@ if (timeoutCounter > 0){
           display.setBrightness(brightval);         
          }
     }
- }  else {
-      display.setColon(false);         
-      SEG_WRITE[0] =  (SEG_A | SEG_F| SEG_E | SEG_D);           // [
-            SEG_WRITE[1] =  (SEG_A | SEG_D);                    //=
-            SEG_WRITE[2] =  (SEG_A | SEG_D);                    //=              
-            SEG_WRITE[3] =  (SEG_A | SEG_D | SEG_B | SEG_C);    // ]
-      display.setSegments(SEG_WRITE);
-    }
-  rpm_last = rpm;             
 } else {
   rpm = 0;
     display.setColon(false);         
@@ -350,7 +346,6 @@ if (timeoutCounter > 0){
   strip.show(); 
 }
   
-if (timeoutCounter > 0){ timeoutCounter--;}  
 
 if (rpm < shift_rpm){
   int a; 
@@ -703,7 +698,7 @@ while (menuvar == 1){
             brightval  = map(sb,1,15,15,8);          
             brightval = constrain (brightval, 8, 15); 
             sb = constrain(sb, 1, 15); 
-            Serial.println(brightval);
+           // Serial.println(brightval);
       
             if (prev_variable != sb){
                   prev_variable = sb;
@@ -762,7 +757,7 @@ while (menuvar == 1){
             dimval  = map(dimsb,1,15,15,8);          
             dimval = constrain (dimval, 8, 15); 
             dimsb = constrain(dimsb, 1, 15); 
-            Serial.println(dimval);
+            //Serial.println(dimval);
       
             if (prev_variable != dimsb){
                   prev_variable = dimsb;
@@ -799,7 +794,7 @@ while (menuvar == 1){
               dimmerlogic = true;
               testbright = false;
             } 
-            Serial.println(dimmerlogic);
+            //Serial.println(dimmerlogic);
       
             if (prev_variable != dimmerlogic){
                   prev_variable = dimmerlogic;
@@ -1066,9 +1061,7 @@ while (menuvar == 1){
                 display.setColon(true);
                 display.showNumberDec(cal*10);                
                 display.setBrightness(brightval/3);  
-                prev_cal = cal;
-           
-                
+                prev_cal = cal;   
                 delay(500);     
               }
        
@@ -1753,8 +1746,6 @@ if (digitalRead(dimPin)== dimmerlogic || testdim == true){
   g = (g/sb); 
   b = (b/sb); 
 }
-     
-
 
 return strip.Color(r,g,b); 
 }
@@ -1820,7 +1811,7 @@ void check_first_run(){
       pixelanim  = 1; 
       senseoption  = 2;
       smoothing = 1; 
-      NUMPIXELS = 8;
+      NUMPIXELS = 16;
       //rpmscaler = EEPROM.read(12);  
       DEBUG = 0; 
       seg1_start = 0; 
@@ -1829,7 +1820,7 @@ void check_first_run(){
       seg2_end = 5; 
       seg3_start = 0; 
       seg3_end = 7;
-      cal = 10;
+      cal = 30;
       writeEEPROM();
       resetFunc();
   }  
@@ -2048,6 +2039,5 @@ void sensorIsr()
   lastPulseTime = now; 
   timeoutCounter = timeoutValue; 
 } 
-
 
 

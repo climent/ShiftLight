@@ -21,3 +21,6 @@ Libraries Required
 ** EEPROMAnything
 ** FreqMeasure
 ** TM1637
+
+# ShiftLightV2_41
+Improved error handling
